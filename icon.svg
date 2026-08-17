@@ -1,0 +1,172 @@
+export type OutputFormat = 'image/jpeg' | 'image/png' | 'image/webp';
+export type Unit = 'px' | 'cm' | 'mm' | 'in';
+
+export interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
+export interface OutputOptions {
+  width: number;
+  height: number;
+  quality: number;
+  format: OutputFormat;
+  dpi: number;
+}
+
+const MIME_EXT: Record<OutputFormat, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+};
+
+export function extensionFor(format: OutputFormat): string {
+  return MIME_EXT[format];
+}
+
+export function fileNameFor(name: string, format: OutputFormat): string {
+  const base = name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9가-힣_-]+/g, '-').replace(/^-+|-+$/g, '') || 'image';
+  return `${base}-converted.${extensionFor(format)}`;
+}
+
+export function pixelsToUnit(px: number, unit: Unit, dpi: number): number {
+  if (unit === 'px') return px;
+  const inches = px / dpi;
+  if (unit === 'in') return inches;
+  if (unit === 'cm') return inches * 2.54;
+  return inches * 25.4;
+}
+
+export function unitToPixels(value: number, unit: Unit, dpi: number): number {
+  if (unit === 'px') return value;
+  const inches = unit === 'in' ? value : unit === 'cm' ? value / 2.54 : value / 25.4;
+  return Math.round(inches * dpi);
+}
+
+export function clampDimension(value: number): number {
+  return Math.min(12000, Math.max(1, Math.round(value)));
+}
+
+export async function loadImage(file: File): Promise<HTMLImageElement> {
+  if (!file.type.startsWith('image/')) throw new Error('이미지 파일만 선택할 수 있습니다.');
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.decoding = 'async';
+    image.src = url;
+    await image.decode();
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error('이미지 크기를 읽을 수 없습니다.');
+    return image;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export function getCropRect(srcW: number, srcH: number, targetW: number, targetH: number): { sx: number; sy: number; sw: number; sh: number } {
+  const targetRatio = targetW / targetH;
+  const srcRatio = srcW / srcH;
+  if (Math.abs(targetRatio - srcRatio) < 0.0001) return { sx: 0, sy: 0, sw: srcW, sh: srcH };
+  if (srcRatio > targetRatio) {
+    const sh = srcH;
+    const sw = Math.round(sh * targetRatio);
+    return { sx: Math.floor((srcW - sw) / 2), sy: 0, sw, sh };
+  }
+  const sw = srcW;
+  const sh = Math.round(sw / targetRatio);
+  return { sx: 0, sy: Math.floor((srcH - sh) / 2), sw, sh };
+}
+
+function writeAscii(view: DataView, offset: number, text: string) {
+  for (let i = 0; i < text.length; i++) view.setUint8(offset + i, text.charCodeAt(i));
+}
+
+
+function setJpegDpi(blob: Blob, dpi: number): Promise<Blob> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const bytes = new Uint8Array(reader.result as ArrayBuffer);
+      if (bytes.length < 4 || bytes[0] !== 0xFF || bytes[1] !== 0xD8) {
+        resolve(blob);
+        return;
+      }
+      const safeDpi = Math.max(1, Math.min(65535, Math.round(dpi)));
+      // APP1 marker + length + 6-byte Exif prefix + TIFF header + 2 IFD entries + next-IFD pointer + 2 rationals.
+      const exif = new Uint8Array(66);
+      const v = new DataView(exif.buffer);
+      v.setUint8(0, 0xFF);
+      v.setUint8(1, 0xE1);
+      v.setUint16(2, 64, false);
+      writeAscii(v, 4, 'Exif');
+      v.setUint8(8, 0); v.setUint8(9, 0);
+      writeAscii(v, 10, 'MM');
+      v.setUint16(12, 0x2A, false);
+      v.setUint32(14, 8, false);
+      v.setUint16(18, 2, false);
+      v.setUint16(20, 0x011A, false); v.setUint16(22, 5, false); v.setUint32(24, 38, false);
+      v.setUint16(32, 0x011B, false); v.setUint16(34, 5, false); v.setUint32(36, 46, false);
+      v.setUint32(48, safeDpi, false); v.setUint32(52, 1, false);
+      v.setUint32(56, safeDpi, false); v.setUint32(60, 1, false);
+      const head = bytes.slice(0, 2);
+      const rest = bytes.slice(2);
+      resolve(new Blob([head, exif, rest], { type: 'image/jpeg' }));
+    };
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+function makePngDpi(bytes: Uint8Array, dpi: number): Uint8Array {
+  // A PNG pHYs chunk stores pixels per metre. This keeps DPI as metadata for viewers supporting pHYs.
+  const ppm = Math.max(1, Math.round(dpi / 0.0254));
+  const chunk = new Uint8Array(21);
+  const dv = new DataView(chunk.buffer);
+  dv.setUint32(0, 9, false);
+  writeAscii(dv, 4, 'pHYs');
+  dv.setUint32(8, ppm, false); dv.setUint32(12, ppm, false); dv.setUint8(16, 1);
+  // CRC over type + data.
+  const crc = crc32(chunk.slice(4,17));
+  dv.setUint32(17, crc, false);
+  return new Uint8Array([...bytes.slice(0,33), ...chunk, ...bytes.slice(33)]);
+}
+
+function crc32(data: Uint8Array): number {
+  let crc = 0xFFFFFFFF;
+  for (const byte of data) {
+    crc ^= byte;
+    for (let i=0;i<8;i++) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+  }
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+export async function encodeCanvas(canvas: HTMLCanvasElement, format: OutputFormat, quality: number, dpi: number): Promise<Blob> {
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((result) => result ? resolve(result) : reject(new Error('이미지 변환에 실패했습니다.')), format, quality / 100);
+  });
+  if (format === 'image/jpeg') return setJpegDpi(blob, dpi);
+  if (format === 'image/png') {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    return new Blob([makePngDpi(bytes, dpi)], { type: 'image/png' });
+  }
+  return blob;
+}
+
+export async function transformImage(image: HTMLImageElement, options: OutputOptions, crop = true): Promise<Blob> {
+  const { width, height } = options;
+  if (width < 1 || height < 1 || width > 12000 || height > 12000) {
+    throw new Error('출력 크기는 1~12,000px 범위여야 합니다.');
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d', { alpha: options.format !== 'image/jpeg' });
+  if (!ctx) throw new Error('브라우저가 Canvas를 지원하지 않습니다.');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  if (options.format === 'image/jpeg') {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+  }
+  const rect = crop ? getCropRect(image.naturalWidth, image.naturalHeight, width, height) : { sx: 0, sy: 0, sw: image.naturalWidth, sh: image.naturalHeight };
+  ctx.drawImage(image, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, width, height);
+  return encodeCanvas(canvas, options.format, options.quality, options.dpi);
+}

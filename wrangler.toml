@@ -1,0 +1,29 @@
+'use client';
+
+import Script from 'next/script';
+
+type Props = { slot?: string; label?: string };
+
+export function AdSenseSlot({ slot, label = '광고' }: Props) {
+  const client = process.env.NEXT_PUBLIC_ADSENSE_CLIENT;
+  const resolvedSlot = slot || process.env.NEXT_PUBLIC_ADSENSE_HOME_TOP_SLOT;
+  if (!client || !resolvedSlot) return null;
+  return (
+    <div aria-label={label} style={{ minHeight: 120, overflow: 'hidden', margin: '16px 0' }}>
+      <Script
+        async
+        src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`}
+        crossOrigin="anonymous"
+        strategy="afterInteractive"
+      />
+      <ins
+        className="adsbygoogle"
+        style={{ display: 'block', minHeight: 100 }}
+        data-ad-client={client}
+        data-ad-slot={resolvedSlot}
+        data-ad-format="auto"
+        data-full-width-responsive="true"
+      />
+    </div>
+  );
+}

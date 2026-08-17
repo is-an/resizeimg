@@ -1,0 +1,9 @@
+{
+  "name": "image-converter-contact-api",
+  "private": true,
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260817.0",
+    "wrangler": "^4.34.0",
+    "typescript": "^5.7.2"
+  }
+}

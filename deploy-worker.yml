@@ -1,0 +1,7 @@
+name = "image-converter-contact-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+
+# D1 binding is intentionally attached to the Worker environment because the database ID
+# is an account-specific value that cannot be safely invented in source control.
+# Required binding name in Cloudflare: DB

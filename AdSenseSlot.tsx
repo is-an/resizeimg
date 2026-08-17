@@ -1,0 +1,4 @@
+export const metadata = { title: '개인정보처리방침', description: '이미지 변환기 개인정보처리방침.' };
+export default function PrivacyPage() {
+  return <div><section className="page-hero"><div className="container"><h1>개인정보처리방침</h1><p>이미지 변환 기능과 문의 기능의 데이터 흐름을 구분하여 설명합니다.</p></div></section><section className="section-sm"><div className="container legal"><h2>1. 이미지 변환</h2><p>이미지 변환 기능은 브라우저에서 파일을 읽고 Canvas로 출력 이미지를 생성합니다. 변환 대상 이미지 원본을 변환 API에 전송하거나 서버 저장소에 보관하지 않는 구조로 구현합니다.</p><h2>2. 문의하기</h2><p>문의하기를 이용하면 사용자가 입력한 이름, 이메일, 문의 내용 및 필요한 동의 정보가 문의 처리용 API로 전송될 수 있습니다. 문의 데이터의 실제 보관 기간과 접근 정책은 운영자가 Worker와 D1 환경에 설정한 정책을 따릅니다.</p><h2>3. 쿠키 및 광고</h2><p>서비스 운영 과정에서 광고 플랫폼 또는 분석 도구를 사용하는 경우 해당 제공자의 쿠키·식별자 정책이 적용될 수 있습니다. 실제 도입하지 않은 도구는 웹사이트에 포함하지 않습니다.</p><h2>4. 보안</h2><p>문의 API는 허용된 Origin 확인, 입력 길이 제한, 서버 측 형식 검증, 파라미터 바인딩을 적용하도록 설계합니다. 이미지 데이터는 문의 API에서 받지 않습니다.</p><h2>5. 문의</h2><p>개인정보 관련 문의는 사이트의 문의하기 페이지를 통해 접수할 수 있습니다.</p></div></section></div>;
+}
